@@ -8,13 +8,13 @@ import { ProductListItem } from '../../components/menu/ProductListItem';
 import { ProductDetailSheet } from '../../components/menu/ProductDetailSheet';
 import Cart from '../../components/menu/Cart';
 import { useCart } from '../../hooks/useCart';
-import { loadData } from '../../utils/storage';
-import type { StoreData, Product } from '../../types';
+import { useStore } from '../../hooks/useStore';
+import type { Product } from '../../types';
 
 type NavTab = 'menu' | 'orders' | 'cart';
 
 export default function MenuPage() {
-  const [storeData, setStoreData] = useState<StoreData>(() => loadData());
+  const { data: storeData, loading } = useStore();
   const { restaurant, categories, products } = storeData;
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,68 +22,46 @@ export default function MenuPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>('menu');
-
-  // iFood behavior: category tabs só aparecem depois do header sair da tela
   const [showCategoryTabs, setShowCategoryTabs] = useState(false);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const restaurantHeaderRef = useRef<HTMLDivElement>(null);
   const isScrollingToCategory = useRef(false);
 
   const { items, addItem, updateQuantity, removeItem, clearCart, total, count } = useCart();
 
-  // Reload ao voltar do admin
-  useEffect(() => {
-    const onFocus = () => setStoreData(loadData());
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, []);
-
   const activeCategories = useMemo(
     () => categories.filter(c => c.active).sort((a, b) => a.order - b.order),
     [categories]
   );
 
-  // Inicializa categoria selecionada
   useEffect(() => {
     if (activeCategories.length > 0 && !selectedCategory) {
       setSelectedCategory(activeCategories[0].id);
     }
   }, [activeCategories, selectedCategory]);
 
-  // Scroll sync — exatamente como no arquivo de referência
   useEffect(() => {
     const handleScroll = () => {
-      // Mostrar/esconder category tabs baseado na posição do restaurantHeader
       if (restaurantHeaderRef.current) {
         const headerBottom = restaurantHeaderRef.current.getBoundingClientRect().bottom;
         setShowCategoryTabs(headerBottom < 60);
       }
-
-      // Não sincronizar durante scroll programático
       if (isScrollingToCategory.current) return;
 
-      // Sincronizar categoria ativa com seção visível
       const categoryElements = activeCategories
-        .map(cat => ({
-          id: cat.id,
-          element: document.getElementById(`category-${cat.id}`),
-        }))
+        .map(cat => ({ id: cat.id, element: document.getElementById(`category-${cat.id}`) }))
         .filter(item => item.element);
 
       if (categoryElements.length === 0) return;
 
       const offset = 180;
       let currentCategory = categoryElements[0].id;
-
       for (const { id, element } of categoryElements) {
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          if (rect.top <= offset) {
-            currentCategory = id;
-          }
+        if (element && element.getBoundingClientRect().top <= offset) {
+          currentCategory = id;
         }
       }
-
       setSelectedCategory(prev => (prev !== currentCategory ? currentCategory : prev));
     };
 
@@ -91,7 +69,6 @@ export default function MenuPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [activeCategories]);
 
-  // Produtos filtrados pela busca
   const filteredProducts = useMemo(() => {
     if (!searchQuery.trim()) return products;
     return products.filter(
@@ -111,19 +88,15 @@ export default function MenuPage() {
     setSelectedProduct(null);
   }
 
-  // Navegar para categoria com scroll — igual à referência
   function handleSelectCategory(categoryId: string) {
     setSelectedCategory(categoryId);
     isScrollingToCategory.current = true;
-
     const element = document.getElementById(`category-${categoryId}`);
     if (element) {
       const offset = 120;
       const top = element.getBoundingClientRect().top + window.pageYOffset - offset;
       window.scrollTo({ top, behavior: 'smooth' });
-      setTimeout(() => {
-        isScrollingToCategory.current = false;
-      }, 500);
+      setTimeout(() => { isScrollingToCategory.current = false; }, 500);
     } else {
       isScrollingToCategory.current = false;
     }
@@ -135,6 +108,17 @@ export default function MenuPage() {
   }
 
   const cartItemsSimple = items.map(i => ({ productId: i.product.id, quantity: i.quantity }));
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f2f2f2] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-gray-200 border-t-gray-500 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Carregando cardápio...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f2f2f2] pb-20">
@@ -161,7 +145,6 @@ export default function MenuPage() {
 
       {/* ── Sticky: busca + category tabs ── */}
       <div className="sticky top-0 bg-white z-40 border-b border-gray-200 shadow-sm">
-        {/* Barra de busca — sempre visível */}
         <div className="px-4 py-3">
           <div className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-2.5">
             <Search size={15} className="text-gray-400 flex-shrink-0" />
@@ -184,7 +167,6 @@ export default function MenuPage() {
           </div>
         </div>
 
-        {/* Category tabs — aparecem com animação ao rolar (iFood style) */}
         <div
           className={`transition-all duration-300 ease-out ${
             showCategoryTabs
@@ -203,7 +185,6 @@ export default function MenuPage() {
 
       {/* ── Conteúdo ── */}
       {searchQuery.trim() ? (
-        /* Resultados de busca */
         <div className="bg-white mt-1 pb-6">
           <div className="px-4 py-3 border-b border-gray-100">
             <p className="text-[13px] text-gray-500">
@@ -225,23 +206,14 @@ export default function MenuPage() {
                   cartQuantity={cartItemsSimple.find(i => i.productId === product.id)?.quantity || 0}
                   onProductClick={handleProductClick}
                 />
-                {idx < filteredProducts.length - 1 && (
-                  <div className="mx-4 border-b border-gray-100" />
-                )}
+                {idx < filteredProducts.length - 1 && <div className="mx-4 border-b border-gray-100" />}
               </div>
             ))
           )}
         </div>
       ) : (
         <>
-          {/* Carousel de destaques */}
-          <HighlightsCarousel
-            products={products}
-            restaurant={restaurant}
-            onProductClick={handleProductClick}
-          />
-
-          {/* Seções por categoria */}
+          <HighlightsCarousel products={products} restaurant={restaurant} onProductClick={handleProductClick} />
           <ProductSection
             products={products}
             categories={activeCategories}
@@ -255,20 +227,8 @@ export default function MenuPage() {
       {/* ── Barra de navegação inferior ── */}
       <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200">
         <div className="flex">
-          <NavItem
-            icon={<Home size={22} />}
-            label="Início"
-            active={activeTab === 'menu'}
-            color={restaurant.primaryColor}
-            onClick={() => setActiveTab('menu')}
-          />
-          <NavItem
-            icon={<ClipboardList size={22} />}
-            label="Pedidos"
-            active={activeTab === 'orders'}
-            color={restaurant.primaryColor}
-            onClick={() => setActiveTab('orders')}
-          />
+          <NavItem icon={<Home size={22} />} label="Início" active={activeTab === 'menu'} color={restaurant.primaryColor} onClick={() => setActiveTab('menu')} />
+          <NavItem icon={<ClipboardList size={22} />} label="Pedidos" active={activeTab === 'orders'} color={restaurant.primaryColor} onClick={() => setActiveTab('orders')} />
           <NavItem
             icon={
               <div className="relative">

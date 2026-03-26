@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChefHat, Lock } from 'lucide-react';
-import { loadData } from '../../utils/storage';
+import { supabase } from '../../lib/supabase';
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
   const navigate = useNavigate();
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data = loadData();
-    if (password === data.restaurant.adminPassword) {
+    setChecking(true);
+    const { data } = await supabase.from('restaurant').select('admin_password').single();
+    setChecking(false);
+    if (data && password === data.admin_password) {
       sessionStorage.setItem('admin_auth', '1');
       navigate('/admin');
     } else {
@@ -53,9 +56,10 @@ export default function AdminLogin() {
 
           <button
             type="submit"
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg font-medium transition-colors"
+            disabled={checking}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg font-medium transition-colors disabled:opacity-60"
           >
-            Entrar
+            {checking ? 'Verificando...' : 'Entrar'}
           </button>
         </form>
 
